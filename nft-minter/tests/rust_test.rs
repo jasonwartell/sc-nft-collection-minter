@@ -2,10 +2,12 @@ pub mod constants;
 pub mod nft_minter_interactor;
 
 use constants::*;
-use elrond_wasm::types::{ManagedBuffer, ManagedByteArray, MultiValueEncoded};
+use elrond_wasm::storage::mappers::StorageTokenWrapper;
+use elrond_wasm::types::{ManagedBuffer, ManagedByteArray, MultiValueEncoded, ManagedVec};
+use elrond_wasm_debug::testing_framework::BlockchainStateWrapper;
 use elrond_wasm_debug::{managed_address, managed_biguint, managed_buffer, rust_biguint, DebugApi};
 use nft_minter::brand_creation::BrandCreationModule;
-use nft_minter::common_storage::{BrandInfo, MintPrice, TimePeriod};
+use nft_minter::common_storage::{BrandInfo, MintPrice, TimePeriod, CommonStorageModule};
 use nft_minter::nft_attributes_builder::{NftAttributesBuilderModule, COLLECTION_HASH_LEN};
 use nft_minter::nft_tier::NftTierModule;
 use nft_minter::royalties::RoyaltiesModule;
@@ -137,6 +139,25 @@ fn buy_random_nft_test() {
 
     let first_tier = FIRST_TIERS[0];
 
+    // verify no payments received
+    let owner_addr = nm_setup.owner_address.clone();
+    nm_setup
+        .b_mock
+        .execute_tx(&owner_addr, &nm_setup.nm_wrapper, &rust_biguint!(0), |sc| {
+            let result = sc.claim_mint_payments();
+            let (egld_amt, other_payments) = result.into_tuple();
+
+            assert_eq!(egld_amt, managed_biguint!(0));
+            assert!(other_payments.is_empty());
+        })
+        .assert_ok();
+/*
+let result = sc.claim_mint_payments();
+            let (egld_amt, other_payments) = result.into_tuple();
+
+            assert_eq!(egld_amt, managed_biguint!(3 * FIRST_MINT_PRICE_AMOUNT));
+            assert!(other_payments.is_empty());
+*/
     // try buy before start
     let first_user_addr = nm_setup.first_user_address.clone();
     nm_setup
@@ -150,6 +171,19 @@ fn buy_random_nft_test() {
         )
         .assert_user_error("May not mint yet");
 
+    // verify no payments received
+    let owner_addr = nm_setup.owner_address.clone();
+    nm_setup
+        .b_mock
+        .execute_tx(&owner_addr, &nm_setup.nm_wrapper, &rust_biguint!(0), |sc| {
+            let result = sc.claim_mint_payments();
+            let (egld_amt, other_payments) = result.into_tuple();
+
+            assert_eq!(egld_amt, managed_biguint!(0));
+            assert!(other_payments.is_empty());
+        })
+        .assert_ok();
+    
     nm_setup
         .b_mock
         .set_block_timestamp(FIRST_MINT_START_TIMESTAMP);
@@ -165,6 +199,19 @@ fn buy_random_nft_test() {
             first_tier,
             1,
         )
+        .assert_ok();
+
+    // claim payment from 1st nft purchase
+    let owner_addr = nm_setup.owner_address.clone();
+    nm_setup
+        .b_mock
+        .execute_tx(&owner_addr, &nm_setup.nm_wrapper, &rust_biguint!(0), |sc| {
+            let result = sc.claim_mint_payments();
+            let (egld_amt, other_payments) = result.into_tuple();
+
+            assert_eq!(egld_amt, managed_biguint!(FIRST_MINT_PRICE_AMOUNT));
+            assert!(other_payments.is_empty());
+        })
         .assert_ok();
 
     // user receives token with nonce 1, and ID 2
@@ -207,6 +254,19 @@ fn buy_random_nft_test() {
         )
         .assert_user_error("Invalid payment");
 
+    // verify no payments received
+    let owner_addr = nm_setup.owner_address.clone();
+    nm_setup
+        .b_mock
+        .execute_tx(&owner_addr, &nm_setup.nm_wrapper, &rust_biguint!(0), |sc| {
+            let result = sc.claim_mint_payments();
+            let (egld_amt, other_payments) = result.into_tuple();
+
+            assert_eq!(egld_amt, managed_biguint!(0));
+            assert!(other_payments.is_empty());
+        })
+        .assert_ok();
+
     // try buy too many - over max limit
     nm_setup
         .call_buy_random_nft(
@@ -218,6 +278,19 @@ fn buy_random_nft_test() {
             3,
         )
         .assert_user_error("Max NFTs per transaction limit exceeded");
+
+    // verify no payments received
+    let owner_addr = nm_setup.owner_address.clone();
+    nm_setup
+        .b_mock
+        .execute_tx(&owner_addr, &nm_setup.nm_wrapper, &rust_biguint!(0), |sc| {
+            let result = sc.claim_mint_payments();
+            let (egld_amt, other_payments) = result.into_tuple();
+
+            assert_eq!(egld_amt, managed_biguint!(0));
+            assert!(other_payments.is_empty());
+        })
+        .assert_ok();
 
     nm_setup
         .b_mock
@@ -242,6 +315,19 @@ fn buy_random_nft_test() {
             5,
         )
         .assert_user_error("Not enough NFTs available");
+
+    // verify no payments received
+    let owner_addr = nm_setup.owner_address.clone();
+    nm_setup
+        .b_mock
+        .execute_tx(&owner_addr, &nm_setup.nm_wrapper, &rust_biguint!(0), |sc| {
+            let result = sc.claim_mint_payments();
+            let (egld_amt, other_payments) = result.into_tuple();
+
+            assert_eq!(egld_amt, managed_biguint!(0));
+            assert!(other_payments.is_empty());
+        })
+        .assert_ok();
 
     // buy 2 ok
     nm_setup
@@ -299,7 +385,7 @@ fn buy_random_nft_test() {
             let result = sc.claim_mint_payments();
             let (egld_amt, other_payments) = result.into_tuple();
 
-            assert_eq!(egld_amt, managed_biguint!(3 * FIRST_MINT_PRICE_AMOUNT));
+            assert_eq!(egld_amt, managed_biguint!(2 * FIRST_MINT_PRICE_AMOUNT));
             assert!(other_payments.is_empty());
         })
         .assert_ok();
@@ -597,6 +683,202 @@ fn formatters_test() {
             );
         })
         .assert_ok();
+}
+
+#[test]
+fn custom_test() {
+    let mut nm_setup = NftMinterSetup::new(nft_minter::contract_obj);
+    let mut b_mock = BlockchainStateWrapper::new();
+    let owner_address = b_mock.create_user_account(&rust_biguint!(OWNER_EGLD_BALANCE));
+    
+    // check contract storage after init()
+    nm_setup
+        .b_mock
+        .execute_query(&nm_setup.nm_wrapper, |sc| {
+            let mapper = sc.collections_category();
+            assert_eq!(mapper.get(), managed_buffer!(CATEGORY));
+        })
+        .assert_ok();
+
+    nm_setup
+        .b_mock
+        .execute_query(&nm_setup.nm_wrapper, |sc| {
+            let mapper = sc.royalties_claim_address();
+            assert_eq!(mapper.get(), managed_address!(&owner_address));
+        })
+        .assert_ok();
+
+    nm_setup
+        .b_mock
+        .execute_query(&nm_setup.nm_wrapper, |sc| {
+            let mapper = sc.mint_payments_claim_address();
+            assert_eq!(mapper.get(), managed_address!(&owner_address));
+        })
+        .assert_ok();
+
+    nm_setup
+        .b_mock
+        .execute_query(&nm_setup.nm_wrapper, |sc| {
+            let mapper = sc.max_nfts_per_transaction();
+            assert_eq!(mapper.get(), 2);
+        })
+        .assert_ok();
+    
+    nm_setup.create_custom_brand();
+
+    // check contract storage after brand creation()
+    nm_setup
+        .b_mock
+        .execute_query(&nm_setup.nm_wrapper, |sc| {
+            let mapper = sc.available_ids(
+                &managed_buffer!(CUSTOM_BRAND_ID),
+                &managed_buffer!(CUSTOM_TIERS[0]),
+            );
+            assert_eq!(mapper.len(), 3);
+            assert_eq!(mapper.get(1), 1);
+        })
+        .assert_ok();
+
+    nm_setup
+        .b_mock
+        .execute_query(&nm_setup.nm_wrapper, |sc| {
+            let mapper = sc.nft_token(
+                &managed_buffer!(CUSTOM_BRAND_ID),
+            );
+            assert_eq!(mapper.get_token_id(), (CUSTOM_TOKEN_ID).into());
+        })
+        .assert_ok();
+
+    nm_setup
+        .b_mock
+        .execute_query(&nm_setup.nm_wrapper, |sc| {
+            let mapper = sc.nft_tiers_for_brand(
+                &managed_buffer!(CUSTOM_BRAND_ID),
+            );
+            assert_eq!(mapper.contains(&managed_buffer!(CUSTOM_TIERS[0])), true);
+        })
+        .assert_ok();
+
+    nm_setup
+        .b_mock
+        .execute_query(&nm_setup.nm_wrapper, |sc| {
+            let mapper = sc.total_nfts(
+                &managed_buffer!(CUSTOM_BRAND_ID),
+                &managed_buffer!(CUSTOM_TIERS[0])
+            );
+            assert_eq!(mapper.get(), 3);
+        })
+        .assert_ok();
+
+    nm_setup
+        .b_mock
+        .execute_query(&nm_setup.nm_wrapper, |sc| {
+            let mapper = sc.nft_id_offset_for_tier(
+                &managed_buffer!(CUSTOM_BRAND_ID),
+                &managed_buffer!(CUSTOM_TIERS[0])
+            );
+            assert_eq!(mapper.get(), 0);
+        })
+        .assert_ok();
+ 
+   
+
+    nm_setup
+        .b_mock
+        .execute_query(&nm_setup.nm_wrapper, |sc| {
+            let mapper = sc.price_for_tier(
+                &managed_buffer!(CUSTOM_BRAND_ID),
+                &managed_buffer!(CUSTOM_TIERS[0])
+            );
+
+            let custom_mint_price = MintPrice::<DebugApi> {
+                token_id: managed_token_id!(CUSTOM_MINT_PRICE_TOKEN_ID),
+                amount: managed_biguint!(CUSTOM_MINT_PRICE_AMOUNT),
+            };
+
+            assert_eq!(mapper.get(), custom_mint_price);
+        })
+        .assert_ok();
+
+    nm_setup
+        .b_mock
+        .execute_query(&nm_setup.nm_wrapper, |sc| {
+            let mapper = sc.registered_brands();
+            assert_eq!(mapper.contains(&managed_buffer!(CUSTOM_BRAND_ID)), true);
+        })
+        .assert_ok();
+
+    nm_setup
+        .b_mock
+        .execute_query(&nm_setup.nm_wrapper, |sc| {
+            let mapper = sc.registered_collection_hashes();
+
+            let collection_hash = 
+                ManagedByteArray::<DebugApi, COLLECTION_HASH_LEN>::new_from_bytes(
+                    CUSTOM_COLLECTION_HASH
+                );
+            assert_eq!(mapper.contains(&collection_hash), true);
+        })
+        .assert_ok();
+
+    nm_setup
+        .b_mock
+        .execute_query(&nm_setup.nm_wrapper, |sc| {
+            let mapper = sc.tags_for_brand(
+                &managed_buffer!(CUSTOM_BRAND_ID),
+            );
+
+            let mut custom_tag = ManagedVec::new();
+            custom_tag.push(managed_buffer!(CUSTOM_TAGS[0]));
+            assert_eq!(mapper.get(), custom_tag);
+        })
+        .assert_ok();
+
+    nm_setup
+        .b_mock
+        .execute_query(&nm_setup.nm_wrapper, |sc| {
+            let result = sc.get_brand_info_view(managed_buffer!(CUSTOM_BRAND_ID));
+
+            let expected_brand_id = managed_buffer!(CUSTOM_BRAND_ID);
+            assert_eq!(result.brand_id, expected_brand_id);
+
+            let expected_token_id = managed_token_id!(CUSTOM_TOKEN_ID);
+            assert_eq!(result.nft_token_id, expected_token_id.unwrap_esdt());
+
+            let expected_brand_info = BrandInfo::<DebugApi> {
+                collection_hash: ManagedByteArray::<DebugApi, COLLECTION_HASH_LEN>::new_from_bytes(
+                    CUSTOM_COLLECTION_HASH,
+                ),
+                token_display_name: managed_buffer!(CUSTOM_TOKEN_DISPLAY_NAME),
+                media_type: managed_buffer!(CUSTOM_MEDIA_TYPE),
+                royalties: managed_biguint!(CUSTOM_ROYALTIES),
+                mint_period: TimePeriod {
+                    start: CUSTOM_MINT_START_TIMESTAMP,
+                    end: CUSTOM_MINT_END_TIMESTAMP,
+                },
+                whitelist_expire_timestamp: CUSTOM_WHITELIST_EXPIRE_TIMESTAMP,
+            };
+            assert_eq!(result.brand_info, expected_brand_info);
+
+            let mut expected_tier_info = Vec::new();
+            for (tier, nft_amount) in CUSTOM_TIERS.iter().zip(CUSTOM_NFT_AMOUNTS.iter()) {
+                expected_tier_info.push(TierInfoEntry::<DebugApi> {
+                    tier: managed_buffer!(tier.clone()),
+                    available_nfts: *nft_amount,
+                    total_nfts: *nft_amount,
+                    mint_price: MintPrice::<DebugApi> {
+                        token_id: managed_token_id!(CUSTOM_MINT_PRICE_TOKEN_ID),
+                        amount: managed_biguint!(CUSTOM_MINT_PRICE_AMOUNT),
+                    },
+                });
+            }
+            assert_eq!(
+                result.tier_info_entries.as_slice(),
+                expected_tier_info.as_slice()
+            );
+        })
+        .assert_ok();
+
 }
 
 fn managed_buffer_to_string(buffer: &ManagedBuffer<DebugApi>) -> String {

@@ -129,6 +129,32 @@ where
         );
     }
 
+    pub fn create_custom_brand(&mut self) {
+        self.call_create_new_brand(
+            CUSTOM_COLLECTION_HASH,
+            CUSTOM_BRAND_ID,
+            CUSTOM_MEDIA_TYPE,
+            CUSTOM_ROYALTIES,
+            CUSTOM_MINT_START_TIMESTAMP,
+            CUSTOM_MINT_END_TIMESTAMP,
+            CUSTOM_MINT_PRICE_TOKEN_ID,
+            CUSTOM_MINT_PRICE_AMOUNT,
+            CUSTOM_TOKEN_DISPLAY_NAME,
+            CUSTOM_TOKEN_TICKER,
+            CUSTOM_TAGS,
+            CUSTOM_TIERS,
+            CUSTOM_NFT_AMOUNTS,
+            CUSTOM_WHITELIST_EXPIRE_TIMESTAMP
+        )
+        .assert_ok();
+
+        self.b_mock.set_esdt_local_roles(
+            self.nm_wrapper.address_ref(),
+            CUSTOM_TOKEN_ID,
+            &[EsdtLocalRole::NftCreate][..],
+        );       
+    }
+
     pub fn build_nft_attributes_first_token(&self, nft_id: usize) -> String {
         let mut attr = "metadata:".to_owned();
         attr += &String::from_utf8(FIRST_COLLECTION_HASH.to_vec()).unwrap();

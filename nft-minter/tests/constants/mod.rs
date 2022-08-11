@@ -43,3 +43,20 @@ pub const SECOND_NFT_AMOUNTS: &[usize] = &[10, 15, 25];
 pub const THIRD_COLLECTION_HASH: &[u8; COLLECTION_HASH_LEN] =
     b"ThirdCollection_______________________________";
 pub const THIRD_BRAND_ID: &[u8] = b"ThirdBrand";
+
+pub const CUSTOM_COLLECTION_HASH: &[u8; COLLECTION_HASH_LEN] =
+    b"CustomCollection______________________________";
+pub const CUSTOM_BRAND_ID: &[u8] = b"CustomBrand";
+pub const CUSTOM_MEDIA_TYPE: &[u8] = b"png";
+pub const CUSTOM_MINT_START_TIMESTAMP: u64 = 100_000_000;
+pub const CUSTOM_MINT_END_TIMESTAMP: u64 = 200_000_000;
+pub const CUSTOM_MINT_PRICE_TOKEN_ID: &[u8] = EGLD_TOKEN_ID;
+pub const CUSTOM_MINT_PRICE_AMOUNT: u64 = 1_000;
+pub const CUSTOM_TOKEN_DISPLAY_NAME: &[u8] = b"CustomToken";
+pub const CUSTOM_TOKEN_TICKER: &[u8] = b"CUSTOM";
+pub const CUSTOM_TOKEN_ID: &[u8] = b"CUSTOM-000000";
+pub const CUSTOM_TAGS: &[&[u8]] = &[b"custom"];
+pub const CUSTOM_TIERS: &[&[u8]] = &[b"gold"];
+pub const CUSTOM_NFT_AMOUNTS: &[usize] = &[3];
+pub const CUSTOM_WHITELIST_EXPIRE_TIMESTAMP: u64 = 150_000_000;
+pub const CUSTOM_ROYALTIES: u64 = 10;
